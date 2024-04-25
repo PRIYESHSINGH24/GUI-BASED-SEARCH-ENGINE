@@ -18,10 +18,10 @@ public class SearchEngineGUI extends JFrame {
     private JButton searchButton;
 
     // Google API key (replace with your actual API key)
-    private static final String API_KEY = "AIzaSyBARD34CxIvKzxW-R_lWsSkiHivnofPHAk";
+    private static final String API_KEY = "ADD YOU KEYS FOR RUNNING IT.";
 
     // Google Custom Search Engine ID (replace with your actual search engine ID)
-    private static final String SEARCH_ENGINE_ID = "456f26a8800d04773";
+    private static final String SEARCH_ENGINE_ID = "ADD YOUR ID FOR RUNNING IT";
 
     	public SearchEngineGUI() {
     	    setTitle("Explore-It");
