@@ -18,10 +18,10 @@ public class SearchEngineGUI extends JFrame {
     private JButton searchButton;
 
     // Google API key (replace with your actual API key)
-    private static final String API_KEY = "ADD YOU KEYS FOR RUNNING IT.";
+    private static final String API_KEY = "AIzaSyBARD34CxIvKzxW-R_lWsSkiHivnofPHAk";
 
     // Google Custom Search Engine ID (replace with your actual search engine ID)
-    private static final String SEARCH_ENGINE_ID = "ADD YOUR ID FOR RUNNING IT";
+    private static final String SEARCH_ENGINE_ID = "93e33348d9003411c";
 
     	public SearchEngineGUI() {
     	    setTitle("Explore-It");
@@ -40,7 +40,7 @@ public class SearchEngineGUI extends JFrame {
     	    ImageIcon logoIcon = null;
     	    // Load and scale the image
     	    try {
-    	        logoIcon = new ImageIcon("C:\\Users\\priye\\Desktop\\finallogo.jpg");
+    	        logoIcon = new ImageIcon(SearchEngineGUI.class.getResource("LOGO1.jpg"));
     	        // Scale the image
     	        Image scaledImage = logoIcon.getImage().getScaledInstance(100, 100, Image.SCALE_SMOOTH);
     	        logoIcon = new ImageIcon(scaledImage);

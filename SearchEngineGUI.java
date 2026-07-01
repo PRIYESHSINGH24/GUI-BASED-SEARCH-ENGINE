@@ -21,7 +21,7 @@ public class SearchEngineGUI extends JFrame {
     private static final String API_KEY = "AIzaSyBARD34CxIvKzxW-R_lWsSkiHivnofPHAk";
 
     // Google Custom Search Engine ID (replace with your actual search engine ID)
-    private static final String SEARCH_ENGINE_ID = "456f26a8800d04773";
+    private static final String SEARCH_ENGINE_ID = "93e33348d9003411c";
 
     public SearchEngineGUI() {
         setTitle("Search Engine");
