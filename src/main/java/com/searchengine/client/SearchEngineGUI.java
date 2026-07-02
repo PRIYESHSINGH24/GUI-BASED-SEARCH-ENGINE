@@ -1,4 +1,4 @@
-package searchengine;
+package com.searchengine.client;
 
 import javax.swing.*;
 import javax.swing.border.TitledBorder;
@@ -7,30 +7,34 @@ import java.awt.*;
 import java.awt.event.ActionListener;
 import java.awt.event.MouseAdapter;
 import java.awt.event.MouseEvent;
-import java.io.*;
+import java.io.BufferedReader;
+import java.io.FileInputStream;
+import java.io.FileOutputStream;
+import java.io.InputStreamReader;
 import java.net.HttpURLConnection;
 import java.net.URL;
 import java.net.URLEncoder;
 import java.util.Properties;
 
 import org.json.JSONArray;
-import org.json.JSONException;
 import org.json.JSONObject;
 
 public class SearchEngineGUI extends JFrame {
-    // Config Persistence
-    private Properties config = new Properties();
-    private static final String CONFIG_FILE = "config.properties";
+    private static final String BASE_URL = "http://localhost:8080/api";
+    
+    // Client UI configurations
+    private Properties clientConfig = new Properties();
+    private static final String CLIENT_CONFIG_FILE = "client_config.properties";
 
-    // UI Panels
+    // Panels
     private CardLayout cardLayout = new CardLayout();
     private JPanel mainContentPanel = new JPanel(cardLayout);
 
-    // Search Fields (Home & Top Bar Results)
+    // Search inputs
     private JTextField homeSearchField;
     private JTextField resultSearchField;
 
-    // Filters and History UI
+    // Filters and Settings UI
     private JRadioButton webSearchRadio;
     private JRadioButton imageSearchRadio;
     private JCheckBox safeSearchCheck;
@@ -38,26 +42,24 @@ public class SearchEngineGUI extends JFrame {
     private DefaultListModel<String> historyModel = new DefaultListModel<>();
     private JList<String> historyListUI = new JList<>(historyModel);
 
-    // Results display
+    // Results area
     private JTextPane resultPane;
 
     public SearchEngineGUI() {
-        // Load configurations
-        loadConfig();
+        // Load client properties
+        loadClientProperties();
 
-        setTitle("Explore-It");
-        setSize(900, 650);
+        setTitle("Explore-It Client");
+        setSize(950, 680);
         setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
         setLocationRelativeTo(null);
 
-        // Define Main layout (Sidebar + Main Content Card Panel)
         setLayout(new BorderLayout());
 
-        // 1. Sidebar Panel
+        // Create UI components
         JPanel sidebar = createSidebar();
         add(sidebar, BorderLayout.WEST);
 
-        // 2. Main Content Card Panel
         JPanel homeCard = createHomeCard();
         JPanel resultsCard = createResultsCard();
 
@@ -65,38 +67,38 @@ public class SearchEngineGUI extends JFrame {
         mainContentPanel.add(resultsCard, "RESULTS");
         add(mainContentPanel, BorderLayout.CENTER);
 
-        // Sync history list UI
-        loadHistory();
+        // Fetch configurations and history from backend REST service
+        SwingWorker<Void, Void> initWorker = new SwingWorker<>() {
+            @Override
+            protected Void doInBackground() {
+                loadHistoryFromBackend();
+                return null;
+            }
+        };
+        initWorker.execute();
 
-        // Apply initial theme from config
-        SwingUtilities.invokeLater(() -> updateTheme(config.getProperty("theme", "dark")));
+        // Apply theme settings
+        SwingUtilities.invokeLater(() -> updateTheme(clientConfig.getProperty("theme", "dark")));
     }
 
-    // Load settings from config.properties
-    private void loadConfig() {
-        try (InputStream input = new FileInputStream(CONFIG_FILE)) {
-            config.load(input);
-        } catch (IOException ex) {
-            // Apply defaults
-            config.setProperty("api_key", "AIzaSyBARD34CxIvKzxW-R_lWsSkiHivnofPHAk");
-            config.setProperty("search_id", "93e33348d9003411c");
-            config.setProperty("safesearch", "off");
-            config.setProperty("theme", "dark");
-            config.setProperty("history", "");
-            saveConfig();
+    private void loadClientProperties() {
+        try (FileInputStream input = new FileInputStream(CLIENT_CONFIG_FILE)) {
+            clientConfig.load(input);
+        } catch (Exception ex) {
+            clientConfig.setProperty("theme", "dark");
+            saveClientProperties();
         }
     }
 
-    // Save settings to config.properties
-    private void saveConfig() {
-        try (OutputStream output = new FileOutputStream(CONFIG_FILE)) {
-            config.store(output, "Explore-It Configuration Settings");
-        } catch (IOException ex) {
+    private void saveClientProperties() {
+        try (FileOutputStream output = new FileOutputStream(CLIENT_CONFIG_FILE)) {
+            clientConfig.store(output, "Explore-It Local Client Configuration");
+        } catch (Exception ex) {
             ex.printStackTrace();
         }
     }
 
-    // Create Sidebar Panel on the Left
+    // Sidebar panel containing Settings, Filters, and History
     private JPanel createSidebar() {
         JPanel sidebar = new JPanel(new GridBagLayout());
         sidebar.setPreferredSize(new Dimension(240, 0));
@@ -107,42 +109,40 @@ public class SearchEngineGUI extends JFrame {
         gbc.insets = new Insets(10, 12, 10, 12);
         gbc.weightx = 1.0;
 
-        // SECTION A: Search Filters & Settings
+        // Section 1: Filters & Themes
         JPanel filterPanel = new JPanel(new GridLayout(0, 1, 6, 6));
         filterPanel.setBorder(BorderFactory.createTitledBorder(
                 BorderFactory.createLineBorder(new Color(100, 100, 100)), 
-                "Search Options", TitledBorder.LEFT, TitledBorder.TOP, 
+                "Options & Theme", TitledBorder.LEFT, TitledBorder.TOP, 
                 new Font("Segoe UI", Font.BOLD, 12)
         ));
 
-        webSearchRadio = new JRadioButton("Web Search", "web".equalsIgnoreCase(config.getProperty("search_type", "web")));
-        imageSearchRadio = new JRadioButton("Image Search", "image".equalsIgnoreCase(config.getProperty("search_type", "web")));
+        webSearchRadio = new JRadioButton("Web Search", true);
+        imageSearchRadio = new JRadioButton("Image Search", false);
         ButtonGroup typeGroup = new ButtonGroup();
         typeGroup.add(webSearchRadio);
         typeGroup.add(imageSearchRadio);
         filterPanel.add(webSearchRadio);
         filterPanel.add(imageSearchRadio);
 
-        safeSearchCheck = new JCheckBox("SafeSearch", "active".equalsIgnoreCase(config.getProperty("safesearch", "off")));
+        safeSearchCheck = new JCheckBox("SafeSearch", false);
         filterPanel.add(safeSearchCheck);
 
-        // Theme combobox
         JPanel themePanel = new JPanel(new BorderLayout(5, 0));
         themePanel.add(new JLabel("Theme:"), BorderLayout.WEST);
         themeCombo = new JComboBox<>(new String[]{"Dark Theme", "Light Theme"});
-        themeCombo.setSelectedIndex("light".equalsIgnoreCase(config.getProperty("theme", "dark")) ? 1 : 0);
+        themeCombo.setSelectedIndex("light".equalsIgnoreCase(clientConfig.getProperty("theme", "dark")) ? 1 : 0);
         themePanel.add(themeCombo, BorderLayout.CENTER);
         filterPanel.add(themePanel);
 
-        gbc.gridx = 0;
-        gbc.gridy = 0;
+        gbc.gridx = 0; gbc.gridy = 0;
         sidebar.add(filterPanel, gbc);
 
-        // SECTION B: History List Panel
+        // Section 2: Search History
         JPanel historyPanel = new JPanel(new BorderLayout(5, 5));
         historyPanel.setBorder(BorderFactory.createTitledBorder(
                 BorderFactory.createLineBorder(new Color(100, 100, 100)), 
-                "Search History", TitledBorder.LEFT, TitledBorder.TOP, 
+                "Search History (DB)", TitledBorder.LEFT, TitledBorder.TOP, 
                 new Font("Segoe UI", Font.BOLD, 12)
         ));
 
@@ -156,33 +156,29 @@ public class SearchEngineGUI extends JFrame {
                     if (selected != null && !selected.trim().isEmpty()) {
                         homeSearchField.setText(selected);
                         resultSearchField.setText(selected);
-                        triggerSearch(selected);
+                        executeSearchQuery(selected);
                     }
                 }
             }
         });
 
         JScrollPane historyScroll = new JScrollPane(historyListUI);
-        historyScroll.setPreferredSize(new Dimension(0, 180));
+        historyScroll.setPreferredSize(new Dimension(0, 160));
         historyPanel.add(historyScroll, BorderLayout.CENTER);
 
-        JButton clearHistoryBtn = new JButton("Clear History");
+        JButton clearHistoryBtn = new JButton("Clear DB Logs");
         clearHistoryBtn.putClientProperty("JButton.buttonType", "roundRect");
-        clearHistoryBtn.addActionListener(e -> {
-            historyModel.clear();
-            config.setProperty("history", "");
-            saveConfig();
-        });
+        clearHistoryBtn.addActionListener(e -> clearHistoryFromBackend());
         historyPanel.add(clearHistoryBtn, BorderLayout.SOUTH);
 
         gbc.gridy = 1;
         sidebar.add(historyPanel, gbc);
 
-        // SECTION C: API Credentials Panel
+        // Section 3: Credentials Panel
         JPanel credsPanel = new JPanel(new GridBagLayout());
         credsPanel.setBorder(BorderFactory.createTitledBorder(
                 BorderFactory.createLineBorder(new Color(100, 100, 100)), 
-                "API Credentials", TitledBorder.LEFT, TitledBorder.TOP, 
+                "REST Backend Settings", TitledBorder.LEFT, TitledBorder.TOP, 
                 new Font("Segoe UI", Font.BOLD, 12)
         ));
 
@@ -191,10 +187,10 @@ public class SearchEngineGUI extends JFrame {
         cGbc.insets = new Insets(4, 6, 4, 6);
         cGbc.weightx = 1.0;
 
-        JTextField apiKeyField = new JTextField(config.getProperty("api_key"));
-        apiKeyField.putClientProperty("JTextField.placeholderText", "Google API Key");
-        JTextField searchIdField = new JTextField(config.getProperty("search_id"));
-        searchIdField.putClientProperty("JTextField.placeholderText", "Search Engine ID (CX)");
+        JTextField apiKeyField = new JTextField();
+        apiKeyField.putClientProperty("JTextField.placeholderText", "Fetching from API...");
+        JTextField searchIdField = new JTextField();
+        searchIdField.putClientProperty("JTextField.placeholderText", "Fetching from API...");
 
         cGbc.gridx = 0; cGbc.gridy = 0;
         credsPanel.add(new JLabel("API Key:"), cGbc);
@@ -205,13 +201,12 @@ public class SearchEngineGUI extends JFrame {
         cGbc.gridy = 3;
         credsPanel.add(searchIdField, cGbc);
 
-        JButton saveCredsBtn = new JButton("Save Config");
+        JButton saveCredsBtn = new JButton("Push to Server");
         saveCredsBtn.putClientProperty("JButton.buttonType", "roundRect");
         saveCredsBtn.addActionListener(e -> {
-            config.setProperty("api_key", apiKeyField.getText().trim());
-            config.setProperty("search_id", searchIdField.getText().trim());
-            saveConfig();
-            JOptionPane.showMessageDialog(this, "Credentials saved successfully!", "Explore-It Settings", JOptionPane.INFORMATION_MESSAGE);
+            String key = apiKeyField.getText().trim();
+            String cx = searchIdField.getText().trim();
+            saveCredentialsToBackend(key, cx);
         });
         cGbc.gridy = 4;
         cGbc.insets = new Insets(10, 6, 4, 6);
@@ -220,39 +215,54 @@ public class SearchEngineGUI extends JFrame {
         gbc.gridy = 2;
         sidebar.add(credsPanel, gbc);
 
-        // Sidebar spacers
+        // Spacers
         gbc.gridy = 3;
         gbc.weighty = 1.0;
         sidebar.add(Box.createGlue(), gbc);
 
-        // Event hooks for instant filter saves
-        ActionListener saveFiltersListener = e -> {
-            config.setProperty("search_type", imageSearchRadio.isSelected() ? "image" : "web");
-            config.setProperty("safesearch", safeSearchCheck.isSelected() ? "active" : "off");
-            saveConfig();
-        };
-        webSearchRadio.addActionListener(saveFiltersListener);
-        imageSearchRadio.addActionListener(saveFiltersListener);
-        safeSearchCheck.addActionListener(saveFiltersListener);
-
+        // Dynamic theme combobox listener
         themeCombo.addActionListener(e -> {
             String theme = themeCombo.getSelectedIndex() == 1 ? "light" : "dark";
-            config.setProperty("theme", theme);
-            saveConfig();
+            clientConfig.setProperty("theme", theme);
+            saveClientProperties();
             updateTheme(theme);
         });
+
+        // Load credentials from backend asynchronously on startup
+        SwingWorker<Void, Void> credsWorker = new SwingWorker<>() {
+            private String key = "";
+            private String cx = "";
+
+            @Override
+            protected Void doInBackground() {
+                try {
+                    String json = sendGetRequest(BASE_URL + "/config");
+                    JSONObject obj = new JSONObject(json);
+                    key = obj.optString("apiKey");
+                    cx = obj.optString("searchId");
+                } catch (Exception ex) {
+                    ex.printStackTrace();
+                }
+                return null;
+            }
+
+            @Override
+            protected void done() {
+                apiKeyField.setText(key);
+                searchIdField.setText(cx);
+            }
+        };
+        credsWorker.execute();
 
         return sidebar;
     }
 
-    // Create standard search home card panel
     private JPanel createHomeCard() {
         JPanel homeCard = new JPanel(new GridBagLayout());
         GridBagConstraints gbc = new GridBagConstraints();
         gbc.fill = GridBagConstraints.HORIZONTAL;
         gbc.insets = new Insets(15, 20, 15, 20);
 
-        // Load logo with multiple resource fallback options
         ImageIcon logoIcon = null;
         try {
             URL imgUrl = SearchEngineGUI.class.getResource("finallogo.jpg");
@@ -260,7 +270,7 @@ public class SearchEngineGUI extends JFrame {
             if (imgUrl == null) imgUrl = SearchEngineGUI.class.getResource("LOGO1.jpg");
             if (imgUrl != null) {
                 logoIcon = new ImageIcon(imgUrl);
-                Image scaledImage = logoIcon.getImage().getScaledInstance(150, 150, Image.SCALE_SMOOTH);
+                Image scaledImage = logoIcon.getImage().getScaledInstance(140, 140, Image.SCALE_SMOOTH);
                 logoIcon = new ImageIcon(scaledImage);
             }
         } catch (Exception e) {
@@ -280,7 +290,7 @@ public class SearchEngineGUI extends JFrame {
         homeSearchField = new JTextField();
         homeSearchField.setPreferredSize(new Dimension(450, 44));
         homeSearchField.setFont(new Font("Segoe UI", Font.PLAIN, 16));
-        homeSearchField.putClientProperty("JTextField.placeholderText", "Search the web or type a URL...");
+        homeSearchField.putClientProperty("JTextField.placeholderText", "Search via Spring Boot backend REST service...");
         homeSearchField.putClientProperty("JTextField.showClearButton", true);
         homeSearchField.putClientProperty("componentRound", 24);
 
@@ -291,7 +301,6 @@ public class SearchEngineGUI extends JFrame {
         homeSearchButton.putClientProperty("JButton.buttonType", "accent");
         homeSearchButton.setCursor(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR));
 
-        // Layout Assembly
         gbc.gridx = 0; gbc.gridy = 0;
         gbc.anchor = GridBagConstraints.CENTER;
         gbc.fill = GridBagConstraints.NONE;
@@ -309,7 +318,7 @@ public class SearchEngineGUI extends JFrame {
             String query = homeSearchField.getText().trim();
             if (!query.isEmpty()) {
                 resultSearchField.setText(query);
-                triggerSearch(query);
+                executeSearchQuery(query);
             }
         };
         homeSearchButton.addActionListener(triggerAction);
@@ -318,11 +327,9 @@ public class SearchEngineGUI extends JFrame {
         return homeCard;
     }
 
-    // Create search results view card panel
     private JPanel createResultsCard() {
         JPanel resultsCard = new JPanel(new BorderLayout());
 
-        // Top bar configuration
         JPanel topBar = new JPanel(new BorderLayout(12, 0));
         topBar.setBorder(BorderFactory.createEmptyBorder(12, 16, 12, 16));
 
@@ -351,7 +358,6 @@ public class SearchEngineGUI extends JFrame {
 
         resultsCard.add(topBar, BorderLayout.NORTH);
 
-        // Result Pane initialization
         resultPane = new JTextPane();
         resultPane.setContentType("text/html");
         resultPane.setEditable(false);
@@ -376,7 +382,7 @@ public class SearchEngineGUI extends JFrame {
             String query = resultSearchField.getText().trim();
             if (!query.isEmpty()) {
                 homeSearchField.setText(query);
-                triggerSearch(query);
+                executeSearchQuery(query);
             }
         };
         resultSearchButton.addActionListener(triggerAction);
@@ -385,89 +391,97 @@ public class SearchEngineGUI extends JFrame {
         return resultsCard;
     }
 
-    // Trigger Search & UI Card updates
-    private void triggerSearch(String query) {
-        addQueryToHistory(query);
+    // Call local Spring Boot REST endpoint to perform search
+    private void executeSearchQuery(String query) {
         cardLayout.show(mainContentPanel, "RESULTS");
-        resultPane.setText("<html><body style='font-family:sans-serif; color:#bdbdbd; margin:20px;'><h3>Searching for \"" + query + "\"...</h3></body></html>");
+        resultPane.setText("<html><body style='font-family:sans-serif; color:#bdbdbd; margin:20px;'><h3>Connecting to backend service...</h3></body></html>");
 
-        SwingWorker<String, Void> worker = new SwingWorker<>() {
+        SwingWorker<String, Void> searchWorker = new SwingWorker<>() {
             @Override
             protected String doInBackground() {
-                return performSearch(query);
+                try {
+                    String searchType = imageSearchRadio.isSelected() ? "image" : "web";
+                    String safeSearch = safeSearchCheck.isSelected() ? "active" : "off";
+
+                    String urlStr = BASE_URL + "/search?q=" + URLEncoder.encode(query, "UTF-8")
+                            + "&type=" + searchType + "&safe=" + safeSearch;
+
+                    String jsonResponse = sendGetRequest(urlStr);
+                    return renderJsonToHtml(jsonResponse, "image".equals(searchType));
+                } catch (Exception ex) {
+                    ex.printStackTrace();
+                    return "<html><body style='font-family:sans-serif; color:red; margin:20px;'><h3>Error calling backend REST API</h3><p>" 
+                            + ex.getMessage() + "</p></body></html>";
+                }
             }
 
             @Override
             protected void done() {
                 try {
-                    String htmlResult = get();
-                    resultPane.setText(htmlResult);
+                    resultPane.setText(get());
                     resultPane.setCaretPosition(0);
-                } catch (Exception ex) {
-                    ex.printStackTrace();
-                    resultPane.setText("<html><body style='font-family:sans-serif; color:red; margin:20px;'><h3>Error executing search request.</h3></body></html>");
+                    // Refresh history list automatically after search logs database
+                    loadHistoryFromBackend();
+                } catch (Exception e) {
+                    e.printStackTrace();
                 }
             }
         };
-        worker.execute();
+        searchWorker.execute();
     }
 
-    private String performSearch(String query) {
+    private void loadHistoryFromBackend() {
         try {
-            boolean isImageSearch = imageSearchRadio.isSelected();
-            String searchUrl = "https://www.googleapis.com/customsearch/v1?q="
-                    + URLEncoder.encode(query, "UTF-8")
-                    + "&key=" + config.getProperty("api_key")
-                    + "&cx=" + config.getProperty("search_id");
-
-            if ("active".equalsIgnoreCase(config.getProperty("safesearch", "off"))) {
-                searchUrl += "&safe=active";
-            }
-            if (isImageSearch) {
-                searchUrl += "&searchType=image";
-            }
-
-            System.out.println("Executing API Request: " + searchUrl);
-
-            URL url = new URL(searchUrl);
-            HttpURLConnection conn = (HttpURLConnection) url.openConnection();
-            conn.setRequestMethod("GET");
-            conn.setConnectTimeout(6000);
-            conn.setReadTimeout(6000);
-
-            int responseCode = conn.getResponseCode();
-            if (responseCode == HttpURLConnection.HTTP_OK) {
-                BufferedReader reader = new BufferedReader(new InputStreamReader(conn.getInputStream()));
-                StringBuilder response = new StringBuilder();
-                String line;
-                while ((line = reader.readLine()) != null) {
-                    response.append(line);
+            String json = sendGetRequest(BASE_URL + "/history");
+            JSONArray arr = new JSONArray(json);
+            SwingUtilities.invokeLater(() -> {
+                historyModel.clear();
+                for (int i = 0; i < arr.length(); i++) {
+                    historyModel.addElement(arr.getString(i));
                 }
-                reader.close();
-
-                return parseJSONToHTML(response.toString(), isImageSearch);
-            } else {
-                return "<html><body style='font-family:sans-serif; color:red; margin:20px;'><h3>HTTP Connection Error: " + responseCode + "</h3></body></html>";
-            }
+            });
         } catch (Exception ex) {
-            ex.printStackTrace();
-            return "<html><body style='font-family:sans-serif; color:red; margin:20px;'><h3>Connection Exception: " + ex.getMessage() + "</h3></body></html>";
+            System.err.println("Could not load history from backend: " + ex.getMessage());
         }
     }
 
-    // Parse Response to Google style Web Results or Image grids
-    private String parseJSONToHTML(String jsonString, boolean isImageSearch) {
+    private void clearHistoryFromBackend() {
+        try {
+            sendDeleteRequest(BASE_URL + "/history");
+            historyModel.clear();
+            JOptionPane.showMessageDialog(this, "Search database history logs cleared!", "Explore-It Client", JOptionPane.INFORMATION_MESSAGE);
+        } catch (Exception ex) {
+            JOptionPane.showMessageDialog(this, "Failed to clear database logs: " + ex.getMessage(), "Error", JOptionPane.ERROR_MESSAGE);
+        }
+    }
+
+    private void saveCredentialsToBackend(String apiKey, String searchId) {
+        try {
+            String urlStr = BASE_URL + "/config?apiKey=" + URLEncoder.encode(apiKey, "UTF-8")
+                    + "&searchId=" + URLEncoder.encode(searchId, "UTF-8");
+            sendPostRequest(urlStr);
+            JOptionPane.showMessageDialog(this, "API Credentials updated on backend server!", "Explore-It Client", JOptionPane.INFORMATION_MESSAGE);
+        } catch (Exception ex) {
+            JOptionPane.showMessageDialog(this, "Failed to sync credentials: " + ex.getMessage(), "Error", JOptionPane.ERROR_MESSAGE);
+        }
+    }
+
+    // JSON Parser to display HTML
+    private String renderJsonToHtml(String jsonString, boolean isImageSearch) {
         try {
             JSONObject jsonResponse = new JSONObject(jsonString);
+            if (jsonResponse.has("error")) {
+                return "<html><body style='font-family:sans-serif; color:red; margin:20px;'><h3>Backend Error</h3><p>" 
+                        + jsonResponse.optString("error") + "</p></body></html>";
+            }
             if (!jsonResponse.has("items")) {
                 return "<html><body style='font-family:sans-serif; color:#bdbdbd; margin:20px;'><h3>No search results found.</h3></body></html>";
             }
 
             JSONArray items = jsonResponse.getJSONArray("items");
             StringBuilder html = new StringBuilder();
-            boolean isDark = "dark".equalsIgnoreCase(config.getProperty("theme", "dark"));
+            boolean isDark = "dark".equalsIgnoreCase(clientConfig.getProperty("theme", "dark"));
 
-            // CSS Customization
             String bgColor = isDark ? "#1e1e1e" : "#ffffff";
             String cardColor = isDark ? "#252526" : "#f1f3f4";
             String textColor = isDark ? "#e0e0e0" : "#202124";
@@ -486,7 +500,7 @@ public class SearchEngineGUI extends JFrame {
                 .append(".snippet { font-size: 13px; color: ").append(snippetColor).append("; }")
                 .append(".img-grid { display: block; width: 100%; text-align: left; }")
                 .append(".img-card { display: inline-block; width: 150px; margin: 8px; padding: 6px; background-color: ").append(cardColor).append("; border: 1px solid ").append(borderColor).append("; border-radius: 8px; text-align: center; vertical-align: top; }")
-                .append(".img-card img { border-radius: 4px; max-width: 130px; max-height: 130px; object-fit: cover; }")
+                .append(".img-card img { border-radius: 4px; max-width: 130px; max-height: 130px; }")
                 .append(".img-title { font-size: 10px; color: ").append(snippetColor).append("; margin-top: 6px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }")
                 .append("</style></head><body><div class='container'>");
 
@@ -525,49 +539,69 @@ public class SearchEngineGUI extends JFrame {
             return html.toString();
         } catch (Exception ex) {
             ex.printStackTrace();
-            return "<html><body><h3>Error parsing search results.</h3></body></html>";
+            return "<html><body><h3>Error parsing search response</h3></body></html>";
         }
     }
 
-    // Load history list from settings properties
-    private void loadHistory() {
-        historyModel.clear();
-        String historyStr = config.getProperty("history", "");
-        if (!historyStr.isEmpty()) {
-            String[] items = historyStr.split("\\|\\|");
-            for (String item : items) {
-                if (!item.trim().isEmpty()) {
-                    historyModel.addElement(item);
-                }
+    // Helper HTTP Request methods
+    private String sendGetRequest(String urlStr) throws Exception {
+        URL url = new URL(urlStr);
+        HttpURLConnection conn = (HttpURLConnection) url.openConnection();
+        conn.setRequestMethod("GET");
+        conn.setConnectTimeout(4000);
+        conn.setReadTimeout(4000);
+
+        int code = conn.getResponseCode();
+        if (code == HttpURLConnection.HTTP_OK) {
+            BufferedReader in = new BufferedReader(new InputStreamReader(conn.getInputStream(), "UTF-8"));
+            StringBuilder response = new StringBuilder();
+            String line;
+            while ((line = in.readLine()) != null) {
+                response.append(line);
             }
+            in.close();
+            return response.toString();
+        } else {
+            throw new RuntimeException("Server responded with HTTP error: " + code);
         }
     }
 
-    // Add query to history list and save it
-    private void addQueryToHistory(String query) {
-        if (query == null || query.trim().isEmpty()) return;
-        query = query.trim();
+    private String sendPostRequest(String urlStr) throws Exception {
+        URL url = new URL(urlStr);
+        HttpURLConnection conn = (HttpURLConnection) url.openConnection();
+        conn.setRequestMethod("POST");
+        conn.setConnectTimeout(4000);
+        conn.setReadTimeout(4000);
+        conn.setDoOutput(true);
 
-        // Avoid duplicates in the visual list
-        historyModel.removeElement(query);
-        historyModel.insertElementAt(query, 0);
-
-        // Max history items = 10
-        while (historyModel.size() > 10) {
-            historyModel.removeElementAt(10);
+        int code = conn.getResponseCode();
+        if (code == HttpURLConnection.HTTP_OK) {
+            BufferedReader in = new BufferedReader(new InputStreamReader(conn.getInputStream(), "UTF-8"));
+            StringBuilder response = new StringBuilder();
+            String line;
+            while ((line = in.readLine()) != null) {
+                response.append(line);
+            }
+            in.close();
+            return response.toString();
+        } else {
+            throw new RuntimeException("Server responded with HTTP error: " + code);
         }
-
-        // Serialize history list back to configuration
-        StringBuilder sb = new StringBuilder();
-        for (int i = 0; i < historyModel.size(); i++) {
-            if (i > 0) sb.append("||");
-            sb.append(historyModel.getElementAt(i));
-        }
-        config.setProperty("history", sb.toString());
-        saveConfig();
     }
 
-    // Switch Application Themes dynamically
+    private void sendDeleteRequest(String urlStr) throws Exception {
+        URL url = new URL(urlStr);
+        HttpURLConnection conn = (HttpURLConnection) url.openConnection();
+        conn.setRequestMethod("DELETE");
+        conn.setConnectTimeout(4000);
+        conn.setReadTimeout(4000);
+
+        int code = conn.getResponseCode();
+        if (code != HttpURLConnection.HTTP_OK) {
+            throw new RuntimeException("Server responded with HTTP error: " + code);
+        }
+    }
+
     private void updateTheme(String themeName) {
         try {
             if ("light".equalsIgnoreCase(themeName)) {
@@ -575,38 +609,13 @@ public class SearchEngineGUI extends JFrame {
             } else {
                 UIManager.setLookAndFeel("com.formdev.flatlaf.FlatDarkLaf");
             }
-            // Propagate theme update down to UI trees
             SwingUtilities.updateComponentTreeUI(this);
-            // Refresh results rendering to adapt to new theme colors if active
             String currentQuery = resultSearchField.getText().trim();
-            if (resultsCardActive() && !currentQuery.isEmpty()) {
-                triggerSearch(currentQuery);
+            if (!currentQuery.isEmpty()) {
+                executeSearchQuery(currentQuery);
             }
         } catch (Exception ex) {
-            System.err.println("Could not toggle LookAndFeel.");
+            System.err.println("Could not toggle LookAndFeel: " + ex.getMessage());
         }
-    }
-
-    private boolean resultsCardActive() {
-        for (Component comp : mainContentPanel.getComponents()) {
-            if (comp.isVisible() && comp == mainContentPanel.getComponents()[1]) {
-                return true;
-            }
-        }
-        return false;
-    }
-
-    public static void main(String[] args) {
-        // Set Default look and feel
-        try {
-            UIManager.setLookAndFeel("com.formdev.flatlaf.FlatDarkLaf");
-        } catch (Exception ex) {
-            System.err.println("FlatLaf Dark Theme not found. Using default.");
-        }
-
-        SwingUtilities.invokeLater(() -> {
-            SearchEngineGUI gui = new SearchEngineGUI();
-            gui.setVisible(true);
-        });
     }
 }

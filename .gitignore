@@ -1,1 +1,15 @@
+# Local configurations
 config.properties
+client_config.properties
+
+# Build outputs
+target/
+*.class
+
+# IDE configurations
+.idea/
+*.iml
+.classpath
+.project
+.settings/
+.DS_Store
